@@ -1,0 +1,10 @@
+<?php
+$g_hostname               = '192.168.105.2';
+$g_db_type                = 'mysqli';
+$g_database_name          = 'bugtracker';
+$g_db_username            = 'root';
+$g_db_password            = 'sa';
+
+$g_default_timezone       = 'Asia/Shanghai';
+
+$g_crypto_master_salt     = 'zBtROq9vchUbzV7y0V94l7hz8HKNCNH+ZjgJ4sSAGfM=';

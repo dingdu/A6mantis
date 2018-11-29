@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>登录</title>
+    <link rel="stylesheet" href="css/login_out_page.css">
+    <link rel="stylesheet" href="css/bootstrap-3.3.6.css">
+    <style>
+        body{
+            position: absolute;
+            height: 100%;
+            width: 100%;
+            overflow: hidden;
+        }
+
+    </style>
+</head>
+<body>
+<div style="width: 100%;max-height: 100%;height: 100%">
+    <div class="w100 " style="height: 10%;padding-left: 10%;padding-top: 10px;margin-bottom: 10px">
+        <img style="padding-top: 1rem" class="img-responsive" src="../images/login_out_page/logo@2x.png" alt="">
+    </div>
+    <div class="w100" style="height: 50%;background: #E8F2FC url('../images/login_out_page/img@2x.png') no-repeat;background-position: 15%;">
+        <div class="container">
+            <div class="row" style="margin-top: 3rem">
+                <div class="col-xs-offset-6 col-xs-5 col-md-6  text-center" style="background: rgba(255,255,255,.7)">
+                    <div  style="color: #5EB0FA;font-size: 2rem;padding-bottom: 1rem;padding-top: 0.5rem">汉全科技工单系统</div>
+
+
+                    <form action="" method="post" role="form" id="form1" onsubmit="return formcheck();" class="we7-form">
+                        <div class="input-group-vertical">
+                            <input name="username"  style="width: 60%;margin:0 auto" type="text" class="form-control " placeholder="请输入用户名登录">
+                            <input name="password" style="width: 60%;margin:1rem auto" type="password" class="form-control password" placeholder="请输入登录密码">
+                            <div style="width: 60%;margin: 0 auto;text-align: left;color: #FF5555">密码</div>
+                        </div>
+                            <div style="width: 60%;margin: 0 auto;text-align: left">
+                                <input type="checkbox" value="true" > 记住密码
+                            </div>
+                        <div class="login-submit text-center" style="margin-bottom: 2rem">
+                            <input style="margin:1rem auto;width: 60%" type="submit" id="submit" name="submit" value="登录" class="btn btn-primary btn-block">
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="w100 text-center" style="vertical-align: baseline;font-size: 2rem;bottom: 0;height: 40%;background: #5EB0FA;color: #fff;">
+                   <div style="height: 5rem;position: absolute;bottom: 0;width: 100%;margin: 0 auto;margin-bottom: 2rem">
+                    <p>www.A6shop.com</p>
+                    <p>汉全科技 成为同龄人的骄傲</p>
+                   </div>
+    </div>
+</div>
+</body>
+</html>

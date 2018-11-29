@@ -1,0 +1,260 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: Administrator
+ * Date: 2018\7\20 0020
+ * Time: 9:09
+ */
+
+
+require_once( 'core.php' );
+require_api( 'gpc_api.php' );
+require_api( 'print_api.php' );
+require_api( 'bugnote_api.php' );
+require_api( 'authentication_api.php' );
+require_css('view_bug_detail_page.css');
+
+//auth_ensure_user_authenticated();
+// 判断登录状态
+if(!isset($_SESSION['is_out_user'])) {
+    print_header_redirect( 'feedback.php', true, false );
+}
+# 保证bug_id必须有
+if(!isset($_GET['bug_id'])) {
+    # 显示错误报告
+    print_error_page('问题ID不能为空');
+}
+
+
+# 基本布局
+layout_page_header();
+layout_page_begin( 'view_all_bug_page.php' );
+print_manage_menu( 'manage_user_create_page.php' );
+
+# 获取注释数据
+$t_rows =bugnote_get_bug_text($_GET['bug_id']);
+//var_dump($t_rows);die;
+
+?>
+<div class="biaoge">
+    <table border="1" class="table">
+        <tr>
+            <th>沟通记录</th>
+
+        </tr>
+        <?php
+        foreach($t_rows as $t_row) {
+            ?>
+            <tr>
+                <td>
+                    <div class="img">
+                        <img src="images/<?php if($t_row->note['is_out_user']) echo 'custom.jpg'; else echo 'admin.jpg'; ?>"/></img>
+                    </div>
+
+                    <div class="word">
+                        <span><?php echo $t_row->note['user_name']; ?>:</span>
+                        <span>
+                            <?php
+                            if($t_row->note['is_pingjia']) {
+                                echo '<br/>';
+                                echo '<br/>';
+                                echo '整体评价: ';
+                                for($i = 0; $i < $t_row->note['star']; $i++) {
+                                    echo '<img class="star" src="images/view_bug_detail_page/star_red.png">';
+                                }
+                                echo '<br/>';
+                                echo '问题是否解决: ';
+                                if($t_row->note['isSolve']) {
+                                    echo '是';
+                                } else {
+                                    echo '否';
+                                }
+                                echo '<br/>';
+                                echo '评价内容: '.$t_row->note['pingjia'];
+                            } else {
+                                echo $t_row->note['content'];
+                            }
+                            ?>
+                        </span><br> <?php echo $t_row->note['time']; ?>
+                    </div>
+                </td>
+
+            </tr>
+            <?php
+        }
+        ?>
+
+    </table>
+
+    <!-- 如果问题已经处理了则不需要评论 -->
+    <?php
+    $bug_status = bug_get_field($_GET['bug_id'], 'status');
+    if($bug_status < 80) {
+        ?>
+        <form action="bug_communicate.php" method="post">
+            <!-- 富文本编辑器 -->
+            <textarea class="form-control" <?php echo helper_get_tab_index() ?> id="content" name="content" cols="80"
+                      rows="10" required><?php echo string_textarea($f_description) ?></textarea>
+            <input type="hidden" name="bug_id" value="<?php if (isset($_GET['bug_id'])) echo $_GET['bug_id']; ?>">
+            <input tabindex="19" style="float: right; margin-top: 10px; margin-right: 20px;"
+                   class="btn btn-primary btn-white btn-round" value="提交反馈" type="submit">
+        </form>
+
+        <!--导入配置文件-->
+        <script type="text/javascript" src="/ue/ueditor.config.js"></script>
+        <script type="text/javascript" src="/ue/ueditor.all.js"></script>
+        <!-- 绑定 ue-->
+        <script type="text/javascript">
+            var ue = UE.getEditor('content');
+            document.getElementById('content').className='edui-default';
+        </script>
+        <?php
+    }
+    ?>
+    <?php
+    if($bug_status == 80 && !bug_has_pingjia($_GET['bug_id'])) {
+        ?>
+        <script type="text/javascript">
+            var check = 0;//该变量是记录当前选择的评分
+
+            /*over()是鼠标移过事件的处理方法*/
+            function over(param){
+                if(param == 1){
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");//第一颗星星亮起来，下面以此类推
+                    $("#message").html("很差");//设置提示语，下面以此类推
+                }else if(param == 2){
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#message").html("比较差");
+                }else if(param == 3){
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star3").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#message").html("一般");
+                }else if(param == 4){
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star3").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star4").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#message").html("比较好");
+                }else if(param == 5){
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star3").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star4").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star5").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#message").html("很好");
+                }
+            }
+            /*out 方法是鼠标移除事件的处理方法，当鼠标移出时，恢复到我的打分情况*/
+            function out(){
+                if(check == 1){//打分是1，设置第一颗星星亮，其他星星暗，其他情况以此类推
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star3").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star4").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star5").attr("src","images/view_bug_detail_page/star.png");
+                    $("#message").html("");
+                }else if(check == 2){
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star3").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star4").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star5").attr("src","images/view_bug_detail_page/star.png");
+                    $("#message").html("");
+                }else if(check == 3){
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star3").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star4").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star5").attr("src","images/view_bug_detail_page/star.png");
+                    $("#message").html("");
+                }else if(check == 4){
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star3").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star4").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star5").attr("src","images/view_bug_detail_page/star.png");
+                    $("#message").html("");
+                }else if(check == 5){
+                    $("#star1").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star3").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star4").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#star5").attr("src","images/view_bug_detail_page/star_red.png");
+                    $("#message").html("");
+                }else if(check == 0){
+                    $("#star1").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star2").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star3").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star4").attr("src","images/view_bug_detail_page/star.png");
+                    $("#star5").attr("src","images/view_bug_detail_page/star.png");
+                    $("#message").html("");
+                }
+            }
+            /*click()点击事件处理，记录打分*/
+            function click(param){
+                check = param;//记录当前打分
+                $("#xin").attr("value",check);
+                out();//设置星星数
+            }
+        </script>
+        <div class="all">
+            <div class="pingjia_header">
+                待您评价
+            </div>
+            <div  class="pingjia_body">
+                <div class="content">
+                    <form action="bug_communicate.php" method="post">
+                        <p><b>*</b>整体评价:
+                            <b3 class="xingxing">
+                                <a href="javascript:click(1)"><img src="images/view_bug_detail_page/star.png" id="star1" onMouseOver="over(1)" onMouseOut="out(1)"/></a>
+                                <a href="javascript:click(2)"><img src="images/view_bug_detail_page/star.png" id="star2" onMouseOver="over(2)" onMouseOut="out(2)" /></a>
+                                <a href="javascript:click(3)"><img src="images/view_bug_detail_page/star.png" id="star3" onMouseOver="over(3)" onMouseOut="out(3)" /></a>
+                                <a href="javascript:click(4)"><img src="images/view_bug_detail_page/star.png" id="star4" onMouseOver="over(4)" onMouseOut="out(4)"/></a>
+                                <a href="javascript:click(5)"><img src="images/view_bug_detail_page/star.png" id="star5" onMouseOver="over(5)" onMouseOut="out(5)"/></a>
+                            </b3>
+                            <span id="message"></span>
+                            <span>
+                                <input type="hidden" name="star" value="" id="xin"></input>
+                                <input type="hidden" value="1" name="is_pingjia"></input>
+                                <input type="hidden" name="bug_id" value="<?php if (isset($_GET['bug_id'])) echo $_GET['bug_id']; ?>">
+                            <span>
+
+                        </p>
+                        <p>问题是否解决:<b1 class="input">
+                                &nbsp;
+                                <input type="radio" name="isSolve" value="1" id="isSolve" checked>已解决</input>
+                                &nbsp;
+                                <input type="radio" name="isSolve" value="0" id="isSolve">未解决</input>
+                            </b1>
+                        </p>
+                        <p>
+                            <b2 class="fankui">我要反馈:</b2>
+                            <textarea name="pingjia" rows="10" cols="100" class="wenzhi"></textarea>
+                        </p>
+                        <input id="tijiao" type="submit" class="btn btn-info" value="提交"></input>
+                    </form>
+
+                </div>
+            </div>
+        </div>
+
+        <?php
+    }
+    ?>
+</div>
+
+    <script>
+        // 设置单选框的选中事件
+        $('input[type=radio][name=isSolve]').change(function() {
+            if(this.value == '1') {
+                $('textarea[name=pingjia]').attr("required", false);
+            } else {
+                $('textarea[name=pingjia]').attr("required", true);
+            }
+        });
+    </script>
+
+<?php
+layout_page_end();

@@ -1,0 +1,38 @@
+<?php
+/**
+ * Notice: 处理问题集所需要的ajax操作
+ * Created by PhpStorm.
+ * User: Administrator
+ * Date: 2018\8\2 0002
+ * Time: 15:46
+ */
+
+require_once ('core.php');
+
+require_api('bug_set_api.php');
+
+// 根据type选择不同的操作
+if(isset($_GET['type']) && !empty($_GET['type'])) {
+    if(isset($_GET['bug_set_id']) && !empty($_GET['bug_set_id'])) {
+        $bs = new BugSet();
+        $bs->id = $_GET['bug_set_id'];
+        switch ($_GET['type']) {
+            // 获取对应临时bug列表
+            case 'getBugList':
+                // 先克隆出来一份
+                $clone_bug_set_id = $bs->cloneBugSet();
+//                $bug_list = getBugListByBugIdSet(getBugIdList($_GET['bug_set_id']));
+                $bug_list = getBugListByBugIdSet(getBugIdList($clone_bug_set_id));
+                if(empty($bug_list))
+                    break;
+                $bug_list['clone_bug_set_id'] = $clone_bug_set_id;
+                echo json_encode($bug_list);
+                break;
+            // 清空当前用户对应的bug_set和临时bug记录
+            case 'clearUserBugModel':
+                clearUsersBugSet(auth_get_current_user_id());
+                break;
+        }
+    }
+
+}

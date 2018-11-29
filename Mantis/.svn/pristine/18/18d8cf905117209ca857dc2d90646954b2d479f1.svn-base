@@ -1,0 +1,105 @@
+<?php
+# MantisBT - A PHP based bugtracking system
+
+# MantisBT is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# MantisBT is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with MantisBT.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * Create a User
+ *
+ * @package MantisBT
+ * @copyright Copyright 2000 - 2002  Kenzaburo Ito - kenito@300baud.org
+ * @copyright Copyright 2002  MantisBT Team - mantisbt-dev@lists.sourceforge.net
+ * @link http://www.mantisbt.org
+ *
+ * @uses core.php
+ * @uses access_api.php
+ * @uses authentication_api.php
+ * @uses constant_inc.php
+ * @uses form_api.php
+ * @uses gpc_api.php
+ * @uses helper_api.php
+ * @uses html_api.php
+ * @uses lang_api.php
+ * @uses print_api.php
+ * @uses string_api.php
+ * @uses utility_api.php
+ */
+
+require_once( 'core.php' );
+require_api( 'access_api.php' );
+require_api( 'authentication_api.php' );
+require_api( 'constant_inc.php' );
+require_api( 'form_api.php' );
+require_api( 'gpc_api.php' );
+require_api( 'helper_api.php' );
+require_api( 'html_api.php' );
+require_api( 'lang_api.php' );
+require_api( 'print_api.php' );
+require_api( 'string_api.php' );
+require_api( 'utility_api.php' );
+
+form_security_validate( 'manage_user_update' );
+
+auth_reauthenticate();
+$f_user_id         = gpc_get_int( 'user_id' );
+$f_username        = gpc_get_string( 'username' );
+if( $f_user_id === 0 ) {
+    error_parameters( $f_username );
+    trigger_error( ERROR_USER_BY_NAME_NOT_FOUND, ERROR );
+}
+
+$t_query = 'SELECT * FROM {out_user} WHERE id = '.db_param();
+$t_result = db_query( $t_query, [$f_user_id] );
+$t_user = db_fetch_array($t_result);
+
+$f_realname        = gpc_get_string( 'realname', '' );
+$f_password        = gpc_get_string( 'password', '' );
+$f_password_verify = gpc_get_string( 'password_verify', '' );
+$f_email           = gpc_get_string( 'email', '' );
+$f_access_level    = gpc_get_string( 'access_level' );
+$f_protected       = gpc_get_bool( 'protected' );
+$f_enabled         = gpc_get_bool( 'enabled' );
+$f_project_id         = gpc_get_int( 'project_id',$t_user['project_id']);
+
+if( !is_blank( $f_password )) {
+    if( $f_password != $f_password_verify ) {
+        trigger_error( ERROR_USER_CREATE_PASSWORD_MISMATCH, ERROR );
+    }
+}
+
+$t_admin_name = user_get_name( auth_get_current_user_id() );
+out_user_update($f_user_id,
+    $f_username,
+    $f_password,
+    $f_project_id,
+    $f_email,
+    $f_access_level,
+    $f_protected,
+    $f_enabled,
+    $f_realname,
+    $t_admin_name );
+
+form_security_purge( 'manage_out_user_create' );
+
+$t_redirect_url = 'manage_out_user_edit_page.php?user_id=' . $f_user_id;
+
+layout_page_header( null, $t_redirect_url );
+
+layout_page_begin( 'manage_overview_page.php' );
+$t_access_level = get_enum_element( 'access_levels', $f_access_level );
+$t_message = ' <span class="bold">' .$t_access_level.':'. $f_username . '</span> '.lang_get( 'account_updated_msg' ) . '</span><br />';
+html_operation_successful( $t_redirect_url, $t_message );
+echo '</div>';
+
+layout_page_end();

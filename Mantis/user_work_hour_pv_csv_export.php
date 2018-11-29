@@ -1,0 +1,225 @@
+<?php
+# MantisBT - A PHP based bugtracking system
+
+# MantisBT is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# MantisBT is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with MantisBT.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * This file implements CSV export functionality within MantisBT
+ * @package MantisBT
+ * @copyright Copyright 2000 - 2002  Kenzaburo Ito - kenito@300baud.org
+ * @copyright Copyright 2002  MantisBT Team - mantisbt-dev@lists.sourceforge.net
+ * @link http://www.mantisbt.org
+ *
+ * @uses core.php
+ * @uses authentication_api.php
+ * @uses columns_api.php
+ * @uses constant_inc.php
+ * @uses csv_api.php
+ * @uses file_api.php
+ * @uses filter_api.php
+ * @uses helper_api.php
+ * @uses print_api.php
+ */
+
+# Prevent output of HTML in the content if errors occur
+define( 'DISABLE_INLINE_ERROR_REPORTING', true );
+
+require_once( 'core.php' );
+require_api( 'authentication_api.php' );
+require_api( 'columns_api.php' );
+require_api( 'constant_inc.php' );
+require_api( 'csv_by_user_api.php' );
+require_api( 'file_api.php' );
+require_api( 'filter_api.php' );
+require_api( 'helper_api.php' );
+require_api( 'print_api.php' );
+
+// 获取当月的第一天和最后一天
+function getthemonth($date)
+{
+	$firstday = date($date.'01  00:00:00', strtotime($date));
+
+	$lastday = date($date.'d 23:59:59', strtotime("$firstday +1 month -1 day"));
+
+	return array(strtotime($firstday), strtotime($lastday));
+}
+auth_ensure_user_authenticated();
+
+helper_begin_long_process();
+
+$t_nl = csv_get_newline();
+$t_sep = csv_get_separator();
+
+# Get current filter
+$t_filter = filter_get_bug_rows_filter();
+
+
+# Get columns to be exported
+$t_columns = csv_get_columns();
+// csv_get_default_filename().
+$t_date_to_display = gpc_get_string( 'due_date',date('Y-m'));
+$t_cvs_name =$t_date_to_display.'.csv';
+csv_start( $t_cvs_name);
+
+# export the titles
+$t_first_column = true;
+ob_start();
+$t_titles = array();
+$t_summary_header_arr = explode( '/', lang_get( 'summary_count_user_by_month_pv_header' ) );
+echo column_get_title(lang_get('by_users').',');
+echo column_get_title(lang_get('user_level').',');
+foreach ( $t_summary_header_arr as $val ) {
+	echo column_get_title( $val.',' );
+}
+
+echo $t_nl;
+
+$t_header = ob_get_clean();
+
+# Fixed for a problem in Excel where it prompts error message "SYLK: File Format Is Not Valid"
+# See Microsoft Knowledge Base Article - 323626
+# http://support.microsoft.com/default.aspx?scid=kb;en-us;323626&Product=xlw
+$t_first_three_chars = mb_substr( $t_header, 0, 3 );
+if( strcmp( $t_first_three_chars, 'ID' . $t_sep ) == 0 ) {
+	$t_header = str_replace( 'ID' . $t_sep, 'Id' . $t_sep, $t_header );
+}
+
+# end of fix
+
+$t_keyword = gpc_get_string( 'keyword','');
+$t_access_level = gpc_get_string( 'access_level','');
+$t_bug_status_level = gpc_get_int( 'bug_status_level',80);
+echo $t_header;
+
+$t_end_of_results = false;
+$t_offset = 0;
+
+summary_print_by_user_ware_hour_pv($t_nl,$t_date_to_display,$t_keyword,$t_access_level,$t_bug_status_level);
+
+/*
+ * 用户每月实际工时/预算工时
+*/
+function summary_print_by_user_ware_hour_pv($t_nl,$times='',$keyword='',$t_access_level='',$t_bug_status_level=0) {
+	$t_summary_header_arr = explode( '/', lang_get( 'summary_count_user_by_month_pv_header' ) );
+    if($times!=''){
+        $year_month = explode('-',$times);
+        $arr =  getthemonth(date($year_month[0].$year_month[1],strtotime('- 1 month')));
+        $startTime = $arr[0];
+        $endTime = $arr[1];
+        $days = cal_days_in_month(CAL_GREGORIAN, $year_month[1], $year_month[0]) - 6;
+    }else{
+        $days = date('t',time()) - 6;
+        $arr =  getthemonth(date('Ym'));
+        $startTime = $arr[0];
+        $endTime =$arr[1];
+    }
+    $total_standard_hours = $days * 8;
+	$where = '';
+	if($keyword!=''){
+		$where  .= " and username like '%{$keyword}%'";
+	}
+	if(!empty($t_access_level)){
+		$where  .= " and access_level = {$t_access_level} ";
+	}
+	$sql = "select id,username,realname,access_level from {user}  where  enabled = 1".$where;
+
+	$t_result = db_query($sql);
+	$g_access_levels = MantisEnum::getAssocArrayIndexedByValues( config_get( 'access_levels_enum_string' ) );
+
+	$data = [];
+	$i=0;
+	while($t_user_list = db_fetch_array($t_result)){
+		$user_id = $t_user_list['id'];
+		$data[$i]['username'] = $t_user_list['username'];
+		$data[$i]['realname'] = $t_user_list['realname'];
+		$data[$i]['user_id'] = $user_id;
+		$data[$i]['levelname'] =MantisEnum::getLabel( lang_get( 'access_levels_enum_string' ), $t_user_list['access_level'] ) ;
+		$data[$i]['count'] = 0;
+		echo csv_escape_string($t_user_list['realname']).',';
+		echo csv_escape_string($data[$i]['levelname']).',';
+
+		$sql1 = "select performance from {user_ext}  where user_id=".db_param();
+		$t_result1 = db_query($sql1,[$user_id]);
+		$user_ext  = db_fetch_array($t_result1);
+
+        $performance = $user_ext['performance'];
+
+
+		//$sql2 = "select sum(uwl.work_hours) as total_work_hours,sum(b.evaluate_time)  as total_evaluate_time from {user_work_log} as uwl left join {bug} as b on b.id = uwl.task_bug_id  where uwl.add_time>={$startTime} and uwl.add_time<={$endTime}  and uwl.user_id = " . db_param();
+        $sql2 = "select sum(uwl.reality_work_hours) as total_work_hours,sum(b.evaluate_time)  as total_evaluate_time from {user_work_log} as uwl ".
+            "JOIN (SELECT bug_id,MAX(date_modified) AS maxdate FROM {bug_history} WHERE field_name = 'status' GROUP BY bug_id) AS bh ON bh.bug_id = uwl.task_bug_id AND bh.maxdate>={$startTime} and bh.maxdate<={$endTime} ".
+            "left join {bug} as b on b.id = uwl.task_bug_id  where b.`status`>={$t_bug_status_level}  AND uwl.add_time>={$startTime} and uwl.add_time<={$endTime}  and uwl.user_id = " . db_param();
+
+        $t_result2 = db_query($sql2, [$user_id]);
+        $res2 = db_fetch_array($t_result2);
+        if($res2['total_work_hours']==''){
+            $total_work_hours = 0;
+        }else{
+            $total_work_hours = $res2['total_work_hours'];
+        }
+
+        if($res2['total_evaluate_time']==''){
+            $total_evaluate_time = 0;
+        }else{
+            $total_evaluate_time = $res2['total_evaluate_time'];
+        }
+
+        // 超时率
+        $data[$i]['overtime_ratio'] = 0;
+        // 超出总工时  A  月超出预计工时总数
+        $over_total_work_hour =  $total_work_hours-$total_evaluate_time;
+        if($over_total_work_hour < 0) $over_total_work_hour = 0; //如果实际工时比预估工时小，不叫超时
+        $data[$i]['over_total_work_hour'] = 0;
+        $data[$i]['total_evaluate_time'] = $total_evaluate_time;
+        if($over_total_work_hour!=''){
+            $data[$i]['over_total_work_hour'] = $over_total_work_hour;
+        }
+        if($over_total_work_hour!=0&&$total_work_hours>0){
+            $data[$i]['overtime_ratio']=  round(($over_total_work_hour/$total_work_hours)*100,2);
+        }
+        //完成率
+        $comp_rate = $total_work_hours/$total_standard_hours;
+        $data[$i]['comp_rate'] =  sprintf('%.2f', $comp_rate*100);
+        // 绩效分=完成的任务所花标准工时/月总工时X $performance
+        if($total_work_hours!=0){
+            //$data[$i]['performance']=  round((1-($over_total_work_hour/$total_work_hours))*$performance,2);
+            $data[$i]['performance']=  round($comp_rate*$performance,2);
+            if($data[$i]['performance'] > 100) $data[$i]['performance'] = 100;
+        }else{
+            $data[$i]['performance']=  0;
+        }
+        echo csv_escape_string($data[$i]['total_evaluate_time']).',';
+		echo csv_escape_string($data[$i]['over_total_work_hour']).',';
+        echo csv_escape_string($data[$i]['total_work_hours']).',';
+		echo csv_escape_string($data[$i]['overtime_ratio']).',';
+        echo csv_escape_string($data[$i]['comp_rate']).',';
+		echo csv_escape_string($data[$i]['performance']).',';
+		$p_ware_hours = $res2['total_work_hours'];
+		$p_ware_hours = sprintf('%.1f', $p_ware_hours);
+		if($p_ware_hours==''){
+			$p_ware_hours =0;
+		}
+		$data[$i]['count'] +=$p_ware_hours;
+		$data[$i]['ware_hour_data'] =$p_ware_hours;
+		//echo csv_escape_string($data[$i]['ware_hour_data']).',';
+		echo $t_nl;
+		$i++;
+	}
+
+
+
+
+
+}
+

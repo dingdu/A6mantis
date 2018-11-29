@@ -1,0 +1,51 @@
+# bug表
+
+## 添加字段
+
+expected_starttime 预计开始时间
+
+expected_endtime   预计结束时间
+
+
+# project_ext表
+
+## 添加字段
+
+submit_time	上线提交时间
+
+sign_time	签订时间
+
+# user_pref表
+
+## 添加字段
+
+email_on_tostart		当问题预计开始时发送Email提醒 
+
+email_on_toend			当问题预计结束前发送Email提醒
+
+email_on_tostart_min_severity	开始问题邮件的最低严重级别
+
+email_on_toend_min_severity	结束问题邮件的最低严重级别
+
+email_on_tostart_hours_in_advance	当问题预计开始时提前多少小时发送邮件
+
+email_on_toend_hours_in_advance		当问题预计结束时提前多少小时发送邮件
+
+# 新增表
+
+
+CREATE TABLE `bugtracker`.`mantis_bug_set_table`  (
+  `id ` int(10) UNSIGNED NOT NULL AUTO_INCREMENT COMMENT ' 集合id',
+  `name ` varchar(20) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL DEFAULT '' COMMENT '集合名称（如商城模版）',
+  `bug_id_set ` varchar(255) CHARACTER SET utf8 COLLATE utf8_general_ci DEFAULT '' COMMENT '问题集合（3,4,12）',
+  `parent_id ` int(10) NOT NULL DEFAULT 0 COMMENT ' 0表示模版， 非0表示由模版copy而来',
+  `last_updated ` int(11) COMMENT ' 最后修改时间',
+  `date_submitted ` int(11) COMMENT '提交集合时间',
+  PRIMARY KEY (`id `)
+);
+
+ALTER TABLE `bugtracker`.`mantis_bug_set_table` 
+ADD COLUMN `creater_id` int(10) COMMENT '创建模版的用户id' DEFAULT 0  AFTER `date_submitted`;
+
+ALTER TABLE `bugtracker`.`mantis_project_table` 
+ADD COLUMN `proj_no` varchar(10) NOT NULL DEFAULT '' COMMENT '项目编号' AFTER `inherit_global`;

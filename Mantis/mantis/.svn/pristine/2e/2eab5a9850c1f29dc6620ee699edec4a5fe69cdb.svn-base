@@ -1,0 +1,162 @@
+<?php
+# MantisBT - A PHP based bugtracking system
+
+# MantisBT is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# MantisBT is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with MantisBT.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * Display user_count page of Statistics
+ *
+ * @package MantisBT
+ * @copyright Copyright 2000 - 2002  Kenzaburo Ito - kenito@300baud.org
+ * @copyright Copyright 2002  MantisBT Team - mantisbt-dev@lists.sourceforge.net
+ * @link http://www.mantisbt.org
+ *
+ * @uses core.php
+ * @uses access_api.php
+ * @uses authentication_api.php
+ * @uses config_api.php
+ * @uses constant_inc.php
+ * @uses database_api.php
+ * @uses gpc_api.php
+ * @uses helper_api.php
+ * @uses html_api.php
+ * @uses lang_api.php
+ * @uses print_api.php
+ * @uses user_count_api.php
+ * @uses user_api.php
+ */
+
+require_once( 'core.php' );
+require_api( 'access_api.php' );
+require_api( 'authentication_api.php' );
+require_api( 'config_api.php' );
+require_api( 'constant_inc.php' );
+require_api( 'database_api.php' );
+require_api( 'gpc_api.php' );
+require_api( 'helper_api.php' );
+require_api( 'html_api.php' );
+require_api( 'lang_api.php' );
+require_api( 'print_api.php' );
+require_api( 'user_count_api.php' );
+require_api( 'user_api.php' );
+
+$f_project_id = gpc_get_int( 'project_id', helper_get_current_project() );
+
+# Override the current page to make sure we get the appropriate project-specific configuration
+$g_project_override = $f_project_id;
+
+//access_ensure_project_level( config_get( 'view_user_count_threshold' ) );
+//access_ensure_project_level(25);
+
+$t_time_stats = user_count_helper_get_time_stats( $f_project_id );
+
+$t_user_count_header_arr = explode( '/', lang_get( 'user_count_by_project_header' ) );
+
+$t_user_count_header = '';
+foreach ( $t_user_count_header_arr as $t_user_count_header_name ) {
+	$t_user_count_header .= '<th class="align-right">';
+	$t_user_count_header .= $t_user_count_header_name;
+	$t_user_count_header .= '</th>';
+}
+
+layout_page_header( lang_get( 'user_count_link' ) );
+
+layout_page_begin( __FILE__ );
+
+
+print_user_count();
+$user_id = auth_get_current_user_id();
+$total_hours =  user_today_ware_hours($user_id);
+?>
+
+
+
+<div class="col-md-12 col-xs-12">
+<div class="space-10"></div>
+
+<div class="widget-box widget-color-blue2">
+<div class="widget-header widget-header-small">
+	<h4 class="widget-title lighter">
+		<i class="ace-icon fa fa-bar-chart-o"></i>
+		<?php echo lang_get('by_today_project_total') ?>
+	</h4>
+</div>
+
+<div class="widget-body">
+<div class="widget-main no-padding">
+
+
+<!-- LEFT COLUMN -->
+<div class="col-md-6 col-xs-12">
+
+	<!--今日工时统计-->
+	<div class="space-10"></div>
+	<div class="widget-box table-responsive">
+		<table class="table table-hover table-bordered table-condensed table-striped">
+			<thead>
+			<tr>
+				<th class="width-35"><?php echo lang_get( 'by_today_warehouse_total' ) ?></th>
+				<th class="width-35"><?php echo lang_get( 'by_today_warehouse_total_status' ) ?></th>
+				<th class="width-35"><?php echo lang_get( 'user_today_work_log' ) ?></th>
+			</tr>
+			</thead>
+			 <tr>
+				 <td>
+					 <?php echo $total_hours?>
+				 </td>
+				 <td>
+					 <div class="progress">
+						 <div class="progress-bar <?php if($total_hours>=8){echo 'progress-bar-success';}else{echo 'progress-bar-warning';} ?>" role="progressbar" aria-valuenow="60"
+							  aria-valuemin="0" aria-valuemax="100" style="width: <?php echo (($total_hours/8)*100)?>%;">
+							 <?php
+							  if($total_hours>8){
+					            echo ' <span style="display: block;width: 100px">超额完成</span>';
+				              }elseif($total_hours==8){
+								  echo ' <span style="display: block;width: 100px">已完成</span>';
+							  }elseif($total_hours<8){
+								  echo ' <span style="display: block;width: 100px;color: #00b7ee">未完成</span>';
+							  }
+							 ?>
+
+						 </div>
+					 </div>
+
+				 </td>
+				 <td>
+					 <a href="/user_work_log_list_page.php?user_id=<?php echo $user_id?>">查看</a>
+				 </td>
+			 </tr>
+
+		</table>
+	</div>
+
+	<!-- BY PROJECT -->
+	<div class="space-10"></div>
+	<div class="widget-box table-responsive">
+		<table class="table table-hover table-bordered table-condensed table-striped">
+		<thead>
+			<tr>
+				<th class="width-35"><?php echo lang_get( 'by_project' ) ?></th>
+				<?php echo $t_user_count_header ?>
+			</tr>
+		</thead>
+		<?php user_count_print_by_project(); ?>
+	</table>
+	</div>
+
+</div>
+</div>
+
+<?php
+layout_page_end();

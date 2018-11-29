@@ -1,0 +1,131 @@
+.biaoge {
+	width: 100%;
+	height: 100%;
+}
+
+.table {
+	border-collapse: collapse;
+	width: 100%;
+	height: 100%;
+}
+
+.table th {
+	height: 42px;
+	text-align: left;
+	background-color: #f5f6fa;
+	font-weight: 50;
+	padding-left: 1rem;
+	border-left: 5px solid darkolivegreen;
+	border-top: 1px solid gainsboro;
+	border-right: 1px solid gainsboro;
+	border-bottom: 1px solid gainsboro;
+}
+
+.table td {
+	background-color: #ffffff;
+	height: 8rem;
+	padding-top: 2rem;
+	outline-style: dotted;
+	outline-width: 0.5px;
+	outline-color: darkgrey;
+	font-weight: bold;
+	border-left: 0.8px solid  darkgrey;
+	border-right: 0.8px solid  darkgrey;
+	border-bottom: 0.3px solid  darkgrey;
+}
+
+.table img {
+	margin-left: 28px;
+}
+
+.word {
+	float: left;
+	padding-left: 8px;
+	color: gray;
+	width:70%;
+	word-wrap:break-word;
+}
+.word .person{
+	float: left;
+}
+
+.elseWord {
+	float: left;
+	padding-left: 8px;
+	width:70%;
+	word-wrap:break-word;
+}
+
+.elseWord p {
+	font-weight: 200;
+	color: #556B2F;
+}
+
+.img {
+	float: left;
+}
+/*.word img{
+	width: 1.5rem;
+	height: 1.4rem;
+}*/
+.elseWord img{
+	width: 1.5rem;
+	height: 1.3rem;
+}
+
+
+/************* 评价 ************/
+.all{
+	width: 100%;
+	height: 100%;
+	border: 1px gainsboro solid;
+}
+.pingjia_header{
+	width: 98%;
+	height:41px;
+	padding-left: 1rem;
+	background-color:#f5f6fa;
+	border: 1px gainsboro solid;
+	line-height: 41px;
+
+}
+
+.pingjia_body .content{
+	padding-left: 2rem;
+	padding-top: 1rem;
+	font-size: 1.5rem;
+}
+.pingjia_body p{
+	padding-top: 1rem;
+
+}
+.pingjia_body .xingxing{
+	padding-left: 9.5rem;
+}
+
+.star {
+	width: 13px;
+	margin-left: 3px !important;
+	margin-bottom: 3px !important;
+}
+
+.pingjia_body b{
+	color: red;
+}
+.pingjia_body b1{
+	padding-left: 7rem;
+}
+.pingjia_body {
+	padding-left: 1rem;
+}
+.fankui{
+	vertical-align: top;
+}
+.wenzhi{
+	margin-left: 10rem;
+}
+#tijiao{
+	margin-left: 71rem;
+	border-radius: 4px;
+
+}

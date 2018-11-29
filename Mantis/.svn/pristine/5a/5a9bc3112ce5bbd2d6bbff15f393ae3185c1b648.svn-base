@@ -1,0 +1,340 @@
+<?php
+/**
+ * Notice: 问题集相关的api
+ * Created by PhpStorm.
+ * User: Administrator
+ * Date: 2018\8\2 0002
+ * Time: 9:45
+ */
+
+//require_once('../core.php');
+
+require_api( 'access_api.php' );
+require_api( 'antispam_api.php' );
+require_api( 'authentication_api.php' );
+require_api( 'bug_api.php' );
+require_api( 'bugnote_api.php' );
+require_api( 'bug_revision_api.php' );
+require_api( 'category_api.php' );
+require_api( 'config_api.php' );
+require_api( 'constant_inc.php' );
+require_api( 'custom_field_api.php' );
+require_api( 'database_api.php' );
+require_api( 'date_api.php' );
+require_api( 'email_api.php' );
+require_api( 'error_api.php' );
+require_api( 'event_api.php' );
+require_api( 'file_api.php' );
+require_api( 'helper_api.php' );
+require_api( 'history_api.php' );
+require_api( 'lang_api.php' );
+require_api( 'mention_api.php' );
+require_api( 'relationship_api.php' );
+require_api( 'sponsorship_api.php' );
+require_api( 'tag_api.php' );
+require_api( 'user_api.php' );
+require_api( 'utility_api.php' );
+
+use Mantis\Exceptions\ClientException;
+
+class BugSet {
+    private $id;                // bugset的id
+    private $name;              // 问题集合的名称
+    private $parent_id;         // 0：模版，其他：表示从模版copy过来的临时集合
+    private $bug_id_set;        // 问题集合列表
+    private $last_upated;       // 最近一次修改时间
+    private $date_submitted;    // 问题集合提交时间
+    private $creater_id;        // 创建模版的用户id
+
+    /**
+     * Notes: set方法用于赋值并加以处理
+     * User: dingduming
+     * Date: 2018\8\2 0002
+     * @param $p_name
+     * @param $p_value
+     */
+    public function  __set($p_name, $p_value) {
+        switch ($p_name) {
+            case 'date_submitted':
+            case 'last_upated':
+                // 先判断是否是日期格式'2018-09-10'
+                $arr = explode('-', $p_value);
+                if(isset($arr[2]) && checkdate($arr[1], $arr[2], $arr[0])) {
+                    // 如果是日期格式则转为时间戳
+                    $p_value = strtotime($p_value);
+                }
+                break;
+            case 'name':
+                // 避免中文
+                $p_value = db_mysql_fix_utf8( $p_value );
+                break;
+        }
+        $this->$p_name = $p_value;
+    }
+    public function __get( $p_name ) {
+        return $this->{$p_name};
+    }
+
+    /**
+     * Notes: 格式化bug_id_set为1,2,3的形式
+     * User: dingduming
+     * Date: 2018\8\2 0002
+     */
+    public function formatBugIdSet() {
+        // 先判断$bug_id_set是数组还是字符串
+        if (is_array($this->bug_id_set)) {
+            $this->bug_id_set = implode(',', $this->bug_id_set);
+        } else if(is_string($this->bug_id_set)){
+            $this->bug_id_set = str_replace('，', ',', $this->bug_id_set);
+        }
+    }
+
+
+    /**
+     * Notes: 创建问题集合记录
+     * User: dingduming
+     * Date: 2018\8\2 0002
+     */
+    public function createBugSet() {
+        $this->formatBugIdSet();
+        $t_sql = 'INSERT INTO {bug_set} (name,bug_id_set,parent_id,last_updated,date_submitted,creater_id) 
+                    VALUES ("'. $this->name . '","' . $this->bug_id_set .'", '. $this->parent_id .'
+                    ,' . time() . ',' . time() . ',' . $this->creater_id .')';
+        $t_rs = db_query($t_sql);
+        // 返回插入id
+        return db_insert_id('{bug_set}');
+    }
+
+
+
+    /**
+     * Notes: 通过id访问删除指定问题集（安全考虑：先不考虑删除对应bug）
+     * User: dingduming
+     * Date: 2018\8\2 0002
+     */
+    public function delBugSetById() {
+        $this->fillBugSetById();
+        $this->formatBugIdSet();
+        if(empty($this)) {
+            return false;
+        }
+        // 删除关联的所有问题
+        $t_sql = 'DELETE FROM {bug} WHERE id in ('. $this->bug_id_set .')';
+        $t_rs = db_query($t_sql);
+
+        $t_sql = 'DELETE FROM {bug_set} WHERE id='. $this->id;
+        $t_rs = db_query($t_sql);
+    }
+
+
+    /**
+     * Notes: 通过id查询数据库来填充其他数据
+     * User: dingduming
+     * Date: 2018\8\2 0002
+     */
+    public function fillBugSetById() {
+        $t_sql = 'SELECT * FROM {bug_set} WHERE id='.$this->id;
+        $t_rs = db_query($t_sql);
+        $t_row = db_fetch_array($t_rs);
+        if(empty($t_row))
+            return false;
+        $this->last_upated = $t_row['last_updated'];
+        $this->date_submitted = $t_row['date_submitted'];
+        $this->name = $t_row['name'];
+        $this->bug_id_set = $t_row['bug_id_set'];
+        $this->parent_id = $t_row['parent_id'];
+        $this->creater_id = $t_row['creater_id'];
+    }
+
+    /**
+     * Notes: 克隆问题集合（包括其对应的问题 也就是说bug_id_set改为clone问题的集合）
+     * User: dingduming
+     * Date: 2018\8\2 0002
+     */
+    public function cloneBugSet() {
+        $this->fillBugSetById();
+        // 先获取要克隆的问题列表
+        $buglist = getBugListByBugIdSet(getBugIdList($this->id));
+        $bug_id_set = array();
+        foreach($buglist as $bug) {
+            // 获取描述
+            $bug['description'] = bug_get_text_field($bug['id'], 'description');
+            // 项目和时间需要重置
+            $bug['project_id'] = 0;
+            $bug['date_submitted'] = time();
+            $bug['last_updated'] = time();
+            $bd = new BugData();
+            $bd->init_data_by_arr($bug);
+            // 创建项目
+            $insert_id = $bd->create();
+            $bug_id_set[] = $insert_id;
+        }
+        $this->creater_id = auth_get_current_user_id();
+        $this->bug_id_set = $bug_id_set;
+        // 格式化为字符串
+        $this->formatBugIdSet();
+        $this->parent_id = $this->id;
+        // 克隆问题集合记录
+        return $this->createBugSet();
+    }
+
+    /**
+     * Notes: 修改时填充未修改的数据
+     * User: dingduming
+     * Date: 2018\8\2 0002
+     */
+//    function fillBugSet() {
+//
+//    }
+
+    /**
+     * Notes: 修改问题集合记录
+     * User: dingduming
+     * Date: 2018\8\2 0002
+     */
+    public function udpateBugSet() {
+        $this->formatBugIdSet();
+        $t_sql = 'UPDATE {bug_set} SET name="' . $this->name . '",bug_id_set="'. $this->bug_id_set .'
+                    ",parent_id='.$this->parent_id.',last_updated='.time().'
+                    ,date_submitted='.$this->date_submitted.',creater_id='. $this->creater_id
+                    .' WHERE id='.$this->id;
+        $t_rs = db_query($t_sql);
+    }
+}
+
+/**
+ * Notes:只是单纯删除bugset记录
+ * User: dingduming
+ * Date: 2018\8\2 0002
+ * @return bool
+ */
+function delOnlyBugSetById($bug_set_id) {
+    $t_sql = 'DELETE FROM {bug_set} WHERE id='. $bug_set_id;
+    $t_rs = db_query($t_sql);
+}
+
+/**
+ * Notes: 清空非模版的bugset表以及其对应的问题
+ * User: dingduming
+ * Date: 2018\8\2 0002
+ */
+function clearBugSet() {
+    // 先获取所有的非模版的bugset
+    $t_sql = 'SELECT * FROM {bug_set} WHERE parent_id != 0';
+    $t_rs = db_query($t_sql);
+    $t_bug_set_list = array();
+    while($row = db_fetch_array($t_rs)) {
+        $t_bug_set_list[] = $row;
+    }
+    $bs = new BugSet();
+    foreach($t_bug_set_list as $bug_set) {
+        $bs->id = $bug_set['id'];
+        // 删除bugset及其对应bug
+        $bs->delBugSetById();
+    }
+}
+
+/**
+ * Notes: 清理指定用户的非模版的bugset
+ * User: dingduming
+ * Date: 2018\8\3 0003
+ */
+function clearUsersBugSet($user_id) {
+    // 先获取所有的非模版的bugset
+    $t_sql = 'SELECT * FROM {bug_set} WHERE parent_id != 0 AND creater_id='.$user_id;
+    $t_rs = db_query($t_sql);
+    $t_bug_set_list = array();
+    while($row = db_fetch_array($t_rs)) {
+        $t_bug_set_list[] = $row;
+    }
+    $bs = new BugSet();
+    foreach($t_bug_set_list as $bug_set) {
+        $bs->id = $bug_set['id'];
+        // 删除bugset及其对应bug
+        $bs->delBugSetById();
+    }
+}
+
+/**
+ * Notes: 获取问题集对应的问题id列表
+ * User: dingduming
+ * Date: 2018\8\2 0002
+ */
+function getBugIdList($bug_set_id) {
+    $t_sql = 'SELECT bug_id_set FROM {bug_set} WHERE id='. $bug_set_id;
+    $t_rs = db_query($t_sql);
+    $t_bug_id_set_string = db_fetch_array($t_rs);
+    $t_bug_id_set_string = $t_bug_id_set_string['bug_id_set'];
+    // 判空
+    if(empty($t_bug_id_set_string)) {
+        return array();
+    }
+    // 将字符串分割为数组
+    $t_bug_id_set_string = str_replace('，', ',', $t_bug_id_set_string);
+    $id_list = explode(',', $t_bug_id_set_string);
+    // 去除重复
+    $id_list = array_unique($id_list);
+    return $id_list;
+}
+
+/**
+ * Notes: 根据bugid列表获取对应的问题列表
+ * User: dingduming
+ * Date: 2018\8\2 0002
+ * @param $bugIdList
+ */
+function getBugListByBugIdSet($bugIdList) {
+    // 避免in () 报错的情况
+    if(empty($bugIdList)) {
+        return false;
+    }
+    $bugIdList = array_unique($bugIdList);
+    $bugIdListStr = implode(',', $bugIdList);
+    $t_sql = 'SELECT * FROM {bug} WHERE id in ('. $bugIdListStr.')';
+    $t_rs = db_query($t_sql);
+    $t_bug_arr = array();
+    while($t_row = db_fetch_array($t_rs)) {
+        $t_bug_arr[] = $t_row;
+    }
+    return $t_bug_arr;
+}
+
+/**
+ * Notes: 获取所有可用问题模版集合
+ * User: dingduming
+ * Date: 2018\8\2 0002
+ */
+function getModelBugSet() {
+    $t_sql = 'SELECT * FROM {bug_set} WHERE parent_id=0';
+    $t_rs = db_query($t_sql);
+    $bug_set = array();
+
+    while($row = db_fetch_array($t_rs)) {
+        $bug_set[] = $row;
+    }
+    return $bug_set;
+}
+
+
+
+//var_dump(getBugListByBugIdSet(getBugIdList(1)));
+//var_dump(getBugListByBugIdSet(getBugIdList(0)));
+
+$bs = new BugSet();
+$bs->id = 18;
+
+//$bs->name = '公众号小程序';
+//$bs->parent_id = 2;
+//$bs->bug_id_set = '2,3,4';
+//$bs->date_submitted = '1533175624';
+//$bs->createBugSet();
+
+// 测试问题集的修改
+//$bs->udpateBugSet();
+// 测试克隆问题集
+//$bs->cloneBugSet();
+// 测试删除问题集
+//$bs->delBugSetById();
+// 测试查询所有模版问题集合
+//var_dump(getModelBugSet());
+

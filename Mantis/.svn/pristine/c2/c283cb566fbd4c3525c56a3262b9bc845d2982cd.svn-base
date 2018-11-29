@@ -1,0 +1,87 @@
+<?php
+/**
+ * Created by PhpStorm.
+ * User: Administrator
+ * Date: 2018\7\20 0020
+ * Time: 9:09
+ */
+
+
+require_once( 'core.php' );
+require_api( 'gpc_api.php' );
+require_api( 'print_api.php' );
+require_api( 'bugnote_api.php' );
+require_api( 'authentication_api.php' );
+require_css('view_bug_detail_page.css');
+
+auth_ensure_user_authenticated();
+
+
+# 保证bug_id必须有
+if(!isset($_GET['bug_id'])) {
+    # 显示错误报告
+    print_error_page('问题ID不能为空');
+}
+
+
+# 基本布局
+layout_page_header();
+layout_page_begin( 'manage_overview_page.php' );
+print_manage_menu( 'manage_user_create_page.php' );
+
+# 获取注释数据
+$t_rows =bugnote_get_bug_text($_GET['bug_id']);
+//var_dump($t_rows);die;
+?>
+<div class="biaoge">
+    <table border="1" class="table">
+        <tr>
+            <th>沟通记录</th>
+
+        </tr>
+        <?php
+        foreach($t_rows as $t_row) {
+            ?>
+            <tr>
+                <td>
+                    <div class="img">
+                        <img src="images/<?php if($t_row->note['is_out_user']) echo 'custom.jpg'; else echo 'admin.jpg'; ?>"/></img>
+                    </div>
+
+                    <div class="word">
+                        <span><?php echo $t_row->note['user_name']; ?>:</span>
+                        <span>
+                            <?php echo $t_row->note['content']; ?>
+                        </span><br> <?php echo $t_row->note['time']; ?>
+                    </div>
+                </td>
+
+            </tr>
+            <?php
+        }
+        ?>
+
+    </table>
+
+    <form action="bug_communicate.php" method="post">
+        <!-- 富文本编辑器 -->
+        <textarea class="form-control" <?php echo helper_get_tab_index() ?> id="content" name="content" cols="80" rows="10" required><?php echo string_textarea( $f_description ) ?></textarea>
+        <input type="hidden" name="bug_id" value="<?php if(isset($_GET['bug_id'])) echo $_GET['bug_id'];?>">
+        <input tabindex="19" style="float: right; margin-top: 10px; margin-right: 20px;" class="btn btn-primary btn-white btn-round" value="提交反馈" type="submit">
+    </form>
+
+    <form action="bug_communicate.php" method="post">
+
+    </form>
+</div>
+
+    <!--导入配置文件-->
+    <script type="text/javascript" src="/ue/ueditor.config.js"></script>
+    <script type="text/javascript" src="/ue/ueditor.all.js"></script>
+    <!-- 绑定 ue-->
+    <script type="text/javascript">
+        var ue = UE.getEditor('content');
+        document.getElementById('content').className='edui-default';
+    </script>
+<?php
+layout_page_end();

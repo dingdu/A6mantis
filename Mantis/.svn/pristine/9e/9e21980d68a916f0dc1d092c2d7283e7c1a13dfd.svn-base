@@ -1,0 +1,186 @@
+<?php
+# MantisBT - A PHP based bugtracking system
+
+# MantisBT is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 2 of the License, or
+# (at your option) any later version.
+#
+# MantisBT is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with MantisBT.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * Update Project
+ *
+ * @package MantisBT
+ * @copyright Copyright 2000 - 2002  Kenzaburo Ito - kenito@300baud.org
+ * @copyright Copyright 2002  MantisBT Team - mantisbt-dev@lists.sourceforge.net
+ * @link http://www.mantisbt.org
+ *
+ * @uses core.php
+ * @uses access_api.php
+ * @uses authentication_api.php
+ * @uses config_api.php
+ * @uses event_api.php
+ * @uses form_api.php
+ * @uses gpc_api.php
+ * @uses print_api.php
+ * @uses project_api.php
+ */
+
+require_once( 'core.php' );
+require_api( 'access_api.php' );
+require_api( 'authentication_api.php' );
+require_api( 'config_api.php' );
+require_api( 'event_api.php' );
+require_api( 'form_api.php' );
+require_api( 'gpc_api.php' );
+require_api( 'print_api.php' );
+require_api( 'project_api.php' );
+require_api( 'project_bonus_api.php' );
+
+form_security_validate( 'manage_proj_update' );
+
+auth_reauthenticate();
+
+$f_project_id 	= gpc_get_int( 'project_id' );
+$f_proj_no      = gpc_get_string('proj_no', '');
+$f_name 		= gpc_get_string( 'name' );
+$f_description 	= gpc_get_string( 'description' );
+$f_status 		= gpc_get_int( 'status' );
+$f_view_state 	= gpc_get_int( 'view_state' );
+$f_file_path 	= gpc_get_string( 'file_path', '' );
+$f_enabled	 	= gpc_get_bool( 'enabled' );
+$f_inherit_global = gpc_get_bool( 'inherit_global', 0 );
+
+$f_owner_user_id = gpc_get_int( 'owner_user_id', '' );
+
+$f_need_working_hours_day	= gpc_get_string( 'need_working_hours_day', '' );
+$f_need_working_hours_people	= gpc_get_string( 'need_working_hours_people', '' );
+$f_develop_working_hours_day	= gpc_get_string( 'develop_working_hours_day', '' );
+$f_develop_working_hours_people	= gpc_get_string( 'develop_working_hours_people', '' );
+$f_test_working_hours_day	 = gpc_get_string( 'test_working_hours_day', '');
+$f_test_working_hours_people = gpc_get_string( 'test_working_hours_people', '' );
+$f_req_evaluate_user_id = gpc_get_int( 'req_evaluate_user_id', '' );
+$f_dev_evaluate_user_id = gpc_get_int( 'dev_evaluate_user_id', '' );
+$f_test_evaluate_user_id = gpc_get_int( 'test_evaluate_user_id', '' );
+
+# 获取签订时间和提交上线时间
+$f_sign_time = gpc_get_string('sign_time', null);
+$f_submit_time = gpc_get_string('submit_time', null);
+
+// 需要转化为时间戳
+$f_sign_time = strtotime($f_sign_time);
+$f_submit_time = strtotime($f_submit_time);
+
+// 获取奖金参数
+$f_bonus_id = isset($_POST['bonus_id']) ? $_POST['bonus_id'] : array();
+$f_bonus = isset($_POST['bonus']) ? $_POST['bonus'] : array();
+$f_deadline = isset($_POST['deadline']) ? $_POST['deadline'] : array();
+
+$f_bonus_list = get_bonus_list_by_project_id($f_project_id);
+$f_update_bonus_flag = false;
+$is_admin = current_user_get_access_level() == 90 ? true : false;
+// 只有管理员才可以修改奖金
+if( $is_admin ) {
+    // 判断有没有修改奖金
+    if (count($f_bonus_id) != count($f_bonus_list)) {
+        $f_update_bonus_flag = true;
+    } else {
+        // 先处理表单奖金为$temp_bonus_list[$deadline]=$bonus的形式
+        $temp_bonus_list = array();
+        foreach ($f_deadline as $index => $deadline) {
+            if (empty($deadline)) {
+                continue;
+            } else {
+                if (empty($f_bonus[$index])) {
+                    $f_bonus[$index] = 0;
+                }
+                $temp_bonus_list[] = array(
+                    'bonus' => $f_bonus[$index],
+                    'deadline' => $deadline,
+                );
+            }
+        }
+        // 根据时间数组排序
+        //    multi_sort($temp_deadline_arr, SORT_ASC, $temp_bonus_list);
+        usort($temp_bonus_list, function ($a, $b) {
+            // 从小到大
+            //        return (strtotime($a['deadline'] )>= strtotime($b['deadline'])) ? 1 : -1;
+            $rs = strtotime($a['deadline']) - strtotime($b['deadline']);
+            if ($rs > 0) {
+                return 1;
+            } else if ($rs == 0) {
+                return 0;
+            } else {
+                return -1;
+            }
+        });
+        // 都是有序这样就可以直接比较了
+        $len = count($f_bonus_list);
+        if (count($temp_bonus_list) != $len) {
+            $f_update_bonus_flag = true;
+        } else {
+            $i = 0;
+            foreach ($temp_bonus_list as $bonus) {
+                if (strtotime($bonus['deadline']) != strtotime($f_bonus_list[$i]['deadline']) ||
+                    floatval($bonus['bonus']) != floatval($f_bonus_list[$i]['bonus'])) {
+                    $f_update_bonus_flag = true;
+                    break;
+                }
+                $i++;
+            }
+        }
+
+    }
+
+    if($f_update_bonus_flag) {
+        // 修改奖金参数（增、删、改 都要考虑到）
+        $org_bonus_string = '<br>';
+        // 先删除所有
+        foreach ($f_bonus_list as $bonus) {
+            delete_bonus_to_project($bonus['id']);
+            $org_bonus_string .= '完成时间：' . $bonus['deadline'] . ' 完成奖金：' . $bonus['bonus'] . '<br>';
+        }
+
+        $update_bonus_string = '<br>';
+        // 再添加所有
+        foreach ($f_deadline as $index => $deadline) {
+            if (empty($deadline)) {
+                continue;
+            } else {
+                if (empty($f_bonus[$index])) {
+                    $f_bonus[$index] = 0;
+                }
+                $update_bonus_string .= '完成时间：' . $f_deadline[$index] . ' 完成奖金：' . $f_bonus[$index] . '<br>';
+                create_bonus_to_project($f_project_id, $deadline, $f_bonus[$index]);
+            }
+        }
+        $update_bonus_string .= '<br>';
+        change_log($f_project_id, 6, $org_bonus_string, $update_bonus_string);
+    }
+}
+
+
+if(empty($f_sign_time)) {
+    $f_sign_time = 'null';
+}
+
+if(empty($f_submit_time)) {
+    $f_submit_time = 'null';
+}
+
+access_ensure_project_level( config_get( 'manage_project_threshold' ), $f_project_id );
+
+project_update( $f_project_id, $f_name,  $f_proj_no,$f_description, $f_status, $f_view_state, $f_file_path, $f_enabled, $f_inherit_global );
+event_signal( 'EVENT_MANAGE_PROJECT_UPDATE', array( $f_project_id ) );
+project_ext_update($f_project_id, $f_owner_user_id, $f_need_working_hours_day, $f_develop_working_hours_day,$f_test_working_hours_day,$f_req_evaluate_user_id,$f_dev_evaluate_user_id,$f_test_evaluate_user_id
+    , $f_sign_time, $f_submit_time);
+form_security_purge( 'manage_proj_update' );
+
+print_header_redirect( 'manage_proj_page.php' );

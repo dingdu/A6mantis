@@ -1,0 +1,400 @@
+<?php
+/**
+ * Notice: 实现工单系统后台自定义发送邮件的api
+ * Created by PhpStorm.
+ * User: Administrator
+ * Date: 2018\7\25 0025
+ * Time: 11:56
+ */
+
+//require '../core.php';
+
+// 这个必须让要执行发送邮件的程序导入
+//require_once '../vendor/phpmailer/phpmailer/PHPMailerAutoload.php';
+
+require_api( 'access_api.php' );
+require_api( 'authentication_api.php' );
+require_api( 'bug_api.php' );
+require_api( 'bugnote_api.php' );
+require_api( 'category_api.php' );
+require_api( 'config_api.php' );
+require_api( 'constant_inc.php' );
+require_api( 'current_user_api.php' );
+require_api( 'custom_field_api.php' );
+require_api( 'database_api.php' );
+require_api( 'email_queue_api.php' );
+require_api( 'event_api.php' );
+require_api( 'helper_api.php' );
+require_api( 'history_api.php' );
+require_api( 'lang_api.php' );
+require_api( 'logging_api.php' );
+require_api( 'project_api.php' );
+require_api( 'relationship_api.php' );
+require_api( 'sponsorship_api.php' );
+require_api( 'string_api.php' );
+require_api( 'user_api.php' );
+require_api( 'user_pref_api.php' );
+require_api( 'utility_api.php' );
+
+/**
+ * Notes: 最基本的发送邮件
+ * User: dingduming
+ * Date: 2018\7\25 0025
+ * Time: 13:42
+ * @param $email
+ * @param $realname
+ * @param $subject
+ * @param $body
+ * @throws phpmailerException
+ */
+function sendMail($email, $realname, $subject, $body) {
+    # 创建PHPMailer对象来执行发送邮件操作
+    $mail=new PHPMailer;
+    # 配置信息
+    $mail->isSMTP();                    // 使用smtp简单传输协议
+    $mail->CharSet  =   "UTF-8";
+    $mail->Host     =   config_get_global('smtp_host');     // 发件人使用的smtp服务地址
+    $mail->SMTPAuth =   true;
+    $mail->Username =   config_get_global('smtp_username'); // 发件人邮箱地址
+    $mail->Password =   config_get_global('smtp_password'); // 发件人密码（这个密码不是登录密码而是smtp密码）
+    $mail->setFrom(config_get_global('smtp_username'),
+        "Mantis邮件系统");                                     // 设置发送人名称
+    $mail->addAddress($email,$realname);   // 收件人地址和姓名
+    $mail->Subject  =   $subject;                                    // 标题
+    $mail->Body     =   $body;                                       // 正文
+
+//    $mail->SMTPDebug = true;           // 开启调试
+
+    # 发送邮件
+    if(!$mail->send()){
+//        echo "send failed!";
+//        echo "error:".$mail->ErrorInfo;
+        return "error:".$mail->ErrorInfo;
+    }else{
+//        echo "send success!";
+        return "send success!";
+    }
+}
+
+/**
+ * Notes: 发送邮件给单个用户
+ * User: dingduming
+ * Date: 2018\7\25 0025
+ * Time: 14:50
+ * @param $userid
+ * @param $subject
+ * @param $body
+ * @throws phpmailerException
+ */
+function sendMailToUser($userid, $subject, $body) {
+    // 先获取对应用户的邮箱和名字
+    $t_sql = 'SELECT realname, email FROM {user} WHERE id='.$userid.' LIMIT 1';
+    $rs = db_query($t_sql);
+    // 取一行（实际上就一行）
+    $row = db_fetch_array($rs);
+    // 判断邮箱是否为空
+    if(!empty($row) || !empty($row['email'])) {
+        sendMail($row['email'], $row['realname'], $subject, $body);
+    }
+}
+
+/**
+ * Notes: 发送邮件给单个客户
+ * User: dingduming
+ * Date: 2018\7\25 0025
+ * Time: 14:50
+ * @param $userid
+ * @param $subject
+ * @param $body
+ * @throws phpmailerException
+ */
+function sendMailToOutUser($userid, $subject, $body) {
+    // 先获取对应用户的邮箱和名字
+    $t_sql = 'SELECT realname, email FROM {out_user} WHERE id='.$userid.' LIMIT 1';
+    $rs = db_query($t_sql);
+    // 取一行（实际上就一行）
+    $row = db_fetch_array($rs);
+    // 判断邮箱是否为空
+    if(!empty($row) || !empty($row['email'])) {
+        sendMail($row['email'], $row['realname'], $subject, $body);
+    }
+}
+
+/**
+ * Notes: 群发邮件
+ * User: dingduming
+ * Date: 2018\7\25 0025
+ * Time: 15:48
+ * @param $userids
+ * @param $subject
+ * @param $body
+ * @throws phpmailerException
+ */
+function sendMailToUsers($userids, $subject, $body) {
+    // 数组转为(25,26,27)的形式
+    $userids = '('. implode(',', $userids) .')';
+    // 先获取对应用户的邮箱和名字
+    $t_sql = 'SELECT realname, email FROM {user} WHERE id in '.$userids;
+    $rs = db_query($t_sql);
+    // 遍历
+    while( $row = db_fetch_array($rs) ) {
+        // 判断邮箱是否为空
+        if(!empty($row) || !empty($row['email'])) {
+            sendMail($row['email'], $row['realname'],
+                $subject, $body);
+        }
+    }
+}
+
+/**
+ * Notes: 生成问题预计开始时间发送邮件主体内容
+ * User: dingduming
+ * Date: 2018\7\30 0030
+ * @param $username
+ * @param $projectName
+ */
+function getAdvanceBody($bug, $isEnd = true) {
+    $link = $_SERVER['HTTP_HOST'].'/view.php?id='.$bug['id'];
+
+    # 获取问题日志
+    $bug_history_list = history_get_raw_events_array($bug['id']);
+    $bug_log_string = "修改时间\t\t用户\t\t属性\t\t改动\n";
+    $bug_log_string .= "======================================================================\n";
+    # 拼接日志列表
+    foreach($bug_history_list as $bug_history) {
+        $bug_log_string .= date('Y-m-d H:i:s', $bug_history['date']) . "\t\t"
+            .$bug_history['username']. "\t\t"
+            .$bug_history['field']. "\t\t"
+            .$bug_history['old_value']. ' => '
+            .$bug_history['new_value']. "\n";
+    }
+    $bug_log_string .= "======================================================================\n";
+    $header = getAdvanceHeader($isEnd);
+    # 这里使用nowdoc结构
+    $body = <<<BODY
+    $header
+====================================================================== 
+http://$link
+======================================================================
+报告者:                {$bug['$reporter_name']}
+分配给:                {$bug['username']} [{$bug['realname']}]
+====================================================================== 
+提交时间：             {$bug['date_submitted']}
+最近修改时间：          {$bug['last_updated']}
+预计开始时间：          {$bug['expected_starttime']}
+预计结束时间：          {$bug['expected_endtime']}
+====================================================================== 
+摘要:                  {$bug['summary']}
+描述:                  {$bug['description']}
+====================================================================== 
+问题日志：
+$bug_log_string
+BODY;
+
+    return $body;
+}
+
+/**
+ * Notes: 生成问题预计结束时间发送邮件主体内容
+ * User: dingduming
+ * Date: 2018\7\30 0030
+ */
+function getAdvanceHeader($isEnd) {
+    if($isEnd) {
+        $header = '您的问题即将结束，请按时完成';
+
+    } else {
+        $header = '您的问题即将开始，请及时开展';
+    }
+    return $header;
+}
+
+/**
+ * Notes: 获取邮件主题
+ * User: dingduming
+ * Date: 2018\7\30 0030
+ * @param $bug
+ * @param $isEnd
+ * @return string
+ */
+function getSubject($bug, $isEnd) {
+    return '[' . $bug['projectname'] . ']:'.$bug['summary'];
+}
+
+/**
+ * Notes: 使用内核自带邮件队列群发邮件
+ * User: dingduming
+ * Date: 2018\7\30 0030
+ */
+function notifyStartBugsByMail($bugs, $isEnd) {
+    # 封装数据
+    $ed = new EmailData();
+    # 设置头部headers
+    $ed->metadata = array();
+    $ed->metadata['headers'] = array();
+
+    # Urgent = 1, Not Urgent = 5, Disable = 0
+    $ed->metadata['charset'] = 'utf-8';
+
+    $t_hostname = '';
+    if( isset( $_SERVER['SERVER_NAME'] ) ) {
+        $t_hostname = $_SERVER['SERVER_NAME'];
+    } else {
+        $t_address = explode( '@', config_get( 'from_email' ) );
+        if( isset( $t_address[1] ) ) {
+            $t_hostname = $t_address[1];
+        }
+    }
+    $ed->metadata['hostname'] = $t_hostname;
+
+    # 遍历要发送邮件的问题
+    foreach($bugs as $bug) {
+        $ed->body = getAdvanceBody($bug, $isEnd);
+        $ed->subject = getSubject($bug, $isEnd);
+
+
+        $ed->email = $bug['email'];
+        // 加入到邮件队列中
+        email_queue_add($ed);
+    }
+    // 清空邮件队列并发送
+    email_send_all();
+}
+
+/**
+ * Notes: 获取将要开始的问题并发送邮件提醒（前提是有开启这个设置）
+ * User: dingduming
+ * Date: 2018\7\30 0030
+ */
+function getNotifyStartBugs() {
+    // 将范围控制在n~n+1小时之内 并且过滤最低严重级别
+    /**
+     * 过滤条件：
+     *      I.   处理状态必须是非已解决或者关闭
+     *      II.  对应邮件设置要打开并且刚好在对应提前时间段
+     *      III. 问题级别要大于对应设置的最低问题级别
+     */
+    $sql = "SELECT b.*,bt.description,p.name as projectname,c.name as categoryname,u.realname,u.username,u.email FROM {bug} AS b 
+      LEFT JOIN {bug_text} AS bt
+      ON bt.id=b.bug_text_id  and b.status < 80
+      LEFT JOIN {user} AS u
+      ON u.id=b.handler_id
+      LEFT JOIN {user_pref} AS uf 
+      ON b.handler_id=uf.user_id AND uf.email_on_tostart = 1  
+      AND uf.email_on_tostart_min_severity <= b.severity
+      LEFT JOIN {project} AS p 
+      ON p.id=b.project_id
+      LEFT JOIN {category} AS c 
+      ON c.id=p.category_id
+      WHERE (b.expected_starttime - unix_timestamp( now( ) )) 
+      BETWEEN  email_on_tostart_hours_in_advance*3600 AND (email_on_tostart_hours_in_advance+1)*3600";
+    $rs = db_query($sql);
+
+    $arr = array();
+    while($row = db_fetch_array($rs)) {
+        # 判断bug是否是工单以此获取对应的报告员
+        if($row['categoryname'] == '工单') {
+            $row['reporter_name'] = out_user_get_name($row['reporter_id']);
+        } else {
+            $row['reporter_name'] = user_get_name($row['reporter_id']);
+        }
+        $arr[] = $row;
+    }
+    return $arr;
+}
+
+/**
+ * Notes: 获取将要开始的问题并发送邮件提醒（前提是有开启这个设置）
+ * User: dingduming
+ * Date: 2018\7\30 0030
+ */
+function getNotifyEndBugs() {
+    // 将范围控制在n~n+1小时之内 并且过滤最低严重级别
+    /**
+     * 过滤条件：
+     *      I.   处理状态必须是非已解决或者关闭
+     *      II.  对应邮件设置要打开并且刚好在对应提前时间段
+     *      III. 问题级别要大于对应设置的最低问题级别
+     */
+    $sql = "SELECT b.*,bt.description,p.name as projectname,c.name as categoryname,u.realname,u.username,u.email FROM {bug} AS b 
+      LEFT JOIN {bug_text} AS bt
+      ON bt.id=b.bug_text_id and b.status < 80
+      LEFT JOIN {user} AS u
+      ON u.id=b.handler_id
+      LEFT JOIN {user_pref} AS uf 
+      ON b.handler_id=uf.user_id AND uf.email_on_toend = 1  
+      AND uf.email_on_toend_min_severity <= b.severity
+      LEFT JOIN {project} AS p 
+      ON p.id=b.project_id
+      LEFT JOIN {category} AS c 
+      ON c.id=p.category_id
+      WHERE (b.expected_endtime - unix_timestamp( now( ) )) 
+      BETWEEN  email_on_toend_hours_in_advance*3600 AND (email_on_toend_hours_in_advance+1)*3600";
+    $rs = db_query($sql);
+
+    $arr = array();
+    while($row = db_fetch_array($rs)) {
+        # 判断bug是否是工单以此获取对应的报告员
+        if($row['categoryname'] == '工单') {
+            $row['reporter_name'] = out_user_get_name($row['reporter_id']);
+        } else {
+            $row['reporter_name'] = user_get_name($row['reporter_id']);
+        }
+        $arr[] = $row;
+    }
+    return $arr;
+}
+
+/**
+ * Notes: 自动发送开始邮件
+ * User: dingduming
+ * Date: 2018\7\30 0030
+ */
+function autoNotifyStartBugs() {
+    $bugs = getNotifyStartBugs();
+    notifyStartBugsByMail($bugs, false);
+}
+
+/**
+ * Notes: 自动发送结束邮件
+ * User: dingduming
+ * Date: 2018\7\30 0030
+ */
+function autoNotifyEndBugs() {
+    $bugs = getNotifyEndBugs();
+    notifyStartBugsByMail($bugs, true);
+}
+
+/**
+ * Notes: 完成工单问题时候发送邮件给对应out_user（这个为reporter）
+ * User: dingduming
+ * Date: 2018\8\3 0003
+ */
+function notifySolveBugsToOutUser($out_reporter_id, $bug_id) {
+    // 先根据客户id获取邮箱
+    $bug_summary = bug_get_field($bug_id, 'summary');
+    $subject = '汉全科技温馨提醒，您的问题'. $bug_summary .'有新动态';
+    $bug_link = 'http://task.a6shop.net/view_bug_detail_page.php?bug_id='.$bug_id;
+    $body = <<<BODY
+汉全科技已经为您解决问题【{$bug_summary}】，请查看
+{$bug_link}
+BODY;
+    sendMailToOutUser($out_reporter_id, $subject,$body);
+}
+
+// 测试发送邮件给单个用户
+//sendMailToUser(26, '测试邮件', '测试内容');
+/*
+$arr = array(25, 26, 27);
+// 测试发送多个邮件给多个用户
+sendMailToUsers($arr, '测试邮件', '测试内容');*/
+//echo getAdvanceBody(1216);
+// 测试自动发送开始邮件
+//autoNotifyStartBugs();
+//// 测试自动发送结束邮件
+//autoNotifyEndBugs();
+
+//notifySolveBugsToOutUser(90,1059);
+
+//sendMail('123@a6shop.com', 'ding', 'ceshi','dfsdfs');
+

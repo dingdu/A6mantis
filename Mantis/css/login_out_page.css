@@ -1,0 +1,17 @@
+/*.backImage {*/
+    /*background: url("../images/login_out_page/img@2x.png");*/
+/*}*/
+.w100{
+    width: 100%;
+    /*height: 5rem;*/
+}
+.positionRelative{
+    position: relative;
+}
+
+.mybody{
+    position: absolute;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}

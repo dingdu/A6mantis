@@ -1,0 +1,27 @@
+<?php
+/**
+ * Notice: 处理问题集所需要的ajax操作
+ * Created by PhpStorm.
+ * User: Administrator
+ * Date: 2018\8\2 0002
+ * Time: 15:46
+ */
+
+require_once ('core.php');
+
+require_api('bug_template_api.php');
+
+// 根据type选择不同的操作
+if(isset($_GET['type']) && !empty($_GET['type'])) {
+    if(isset($_GET['bug_template_category_id']) && !empty($_GET['bug_template_category_id'])) {
+        switch ($_GET['type']) {
+            // 获取对应问题模版列表
+            case 'getBugTemplateList':
+                $list = getBugTemplatesByCategory($_GET['bug_template_category_id']);
+                echo json_encode($list);
+                break;
+
+        }
+    }
+
+}

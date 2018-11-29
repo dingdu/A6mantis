@@ -1,0 +1,427 @@
+<?php
+/**
+ * Notice: 绘制甘特图显示用户对应工单数据
+ * Created by PhpStorm.
+ * User: Administrator
+ * Date: 2018\8\6 0006
+ * Time: 15:02
+ */
+
+
+require_once( 'core.php' );
+require_api( 'access_api.php' );
+require_api( 'authentication_api.php' );
+require_api( 'config_api.php' );
+require_api( 'constant_inc.php' );
+require_api( 'database_api.php' );
+require_api( 'gpc_api.php' );
+require_api( 'helper_api.php' );
+require_api( 'html_api.php' );
+require_api( 'icon_api.php' );
+require_api( 'lang_api.php' );
+require_api( 'print_api.php' );
+require_api( 'string_api.php' );
+require_api( 'utility_api.php' );
+
+
+//access_ensure_project_level( config_get( 'view_summary_threshold' ) );
+
+$user_id = auth_get_current_user_id();
+// 根据身份来判断可否选择user_id还是默认自己
+$user_access_level = user_get_access_level($user_id);
+// 经理以上可选择
+if($user_access_level >= 70) {
+    $user_id = gpc_get_int('user_id',$user_id);
+}
+
+// 月份（0表示当前月份）
+$f_due_date = gpc_get_string('due_date', '');
+$f_project_id = gpc_get_int('project_id', 1);
+
+// 默认所有时间
+if(empty($f_due_date)) {
+    $due_date_sql = '';
+} else {
+    // 判断日期格式是否正确
+    $year = date('Y', $f_due_date);
+    $month = date('m', $f_due_date);
+    if(checkdate($month, '01', $year)) {
+        $startTime = strtotime($f_due_date);
+        $endTime = strtotime('+1 month', $startTime) - 1;
+        if(empty($startTime)) {
+            print_error_page('日期格式不正确');
+        }
+        $due_date_sql =  " AND b.date_submitted>=". $startTime ." AND b.date_submitted<=". $endTime;
+    } else {
+        print_error_page('日期格式不正确');
+    }
+}
+
+
+if(empty($f_project_id)) {
+    $proj_id_sql = '';
+} else {
+    $proj_id_sql = ' AND p.id='.$f_project_id;
+}
+
+// 准备数据
+$t_sql = 'SELECT b.*,SUM(uwl.work_hours) AS real_hours,p.name AS project_name FROM {bug} as b 
+            LEFT JOIN {bug_text} AS bt ON b.bug_text_id=bt.id
+            LEFT JOIN {user_work_log} AS uwl ON uwl.user_id='. $user_id .' AND uwl.task_bug_id=b.id
+            lEFT JOIN {project} AS p ON p.id=b.project_id 
+            WHERE b.handler_id='. $user_id. $due_date_sql . $proj_id_sql.
+            ' GROUP BY b.id ORDER BY b.date_submitted ASC   ';
+$rs = db_query($t_sql);
+//var_dump($rs);die;
+//$bug_list = array();
+$project_bug_list = array();
+while($row = db_fetch_array($rs)) {
+    if( empty($row['real_hours']) ) {
+        $row['real_hours'] = 0;
+    }
+
+    // 判断预计开始和预计结束有没有设置
+    if(empty($row['expected_starttime'])){
+        $row['expected_starttime'] = $row['date_submitted']+0;
+    }
+    if(empty($row['expected_endtime'])){
+        $row['expected_endtime'] = $row['expected_starttime'] + intval($row['evaluate_time']*3600);
+    }
+
+    // 计算超时时间从哪里开始（这里是甘特图的结束点）/* 超时开始日期【当实际>计划时 计划 反之 实际】 */
+    if($row['expected_endtime'] > $row['date_submitted'] + $row['real_hours']*3600) {
+        $row['timeout'] = $row['date_submitted'] + $row['real_hours']*3600;
+    } else {
+        $row['timeout'] = $row['expected_endtime'];
+    }
+//    $bug_list[] = $row;
+    $project_bug_list[$row['project_name']][] = $row;
+}
+
+//$bug_list = array_slice($bug_list, 0, 10);
+//var_dump($bug_list);die;
+//var_dump($project_bug_list);die;
+
+layout_page_header( lang_get( 'manage_users_link' ) );
+
+layout_page_begin( 'user_count_page.php' );
+
+print_user_count();
+
+?>
+
+<div style="margin-top: 20px;" class="widget-box widget-color-blue2">
+<div class="widget-header widget-header-small">
+	<h4 class="widget-title lighter">
+		<i class="ace-icon fa fa-bar-chart-o"></i>
+		<?php echo lang_get('by_today_project_total') ?>
+	</h4>
+</div>
+</div>
+<div class="project-gantt-search" style="margin: 0 auto;width: 1200px;">
+    <div style="margin: 0 auto; width: 1000px;">
+    <form action="" method="post">
+        <!-- 选择项目 -->
+        <label for="select-project-id" style="margin: 30px 10px 20px 30px;">选择项目:</label>
+        <select id="select-project-id"  name="project_id" class="input-sm">
+            <?php print_project_option_list($f_project_id, false, $f_project_id, true, true) ?>
+        </select>
+
+        <?php if($user_access_level >= 70){ ?>
+            <!-- 选择用户 -->
+            <label for="select-project-id" style="margin: 30px 10px 20px 30px;">选择用户:</label>
+            <select <?php echo helper_get_tab_index() ?> id="user_id" name="user_id" class="input-sm" >
+                <option value="0" selected="selected"></option>
+                <?php print_assign_to_option_list($user_id) ?>
+            </select>
+        <?php } ?>
+
+        <!-- 选择月份 -->
+        <label for="due_date" style="margin: 30px 10px 20px 30px;">选择月份:</label>
+        <?php echo '<input ' . helper_get_tab_index() . ' type="text" id="due_date" name="due_date" class="form-control fc-clear datetimepicker input-sm" ' .
+        'data-picker-locale="' . lang_get_current_datetime_locale() .
+        '" data-picker-format="' . config_get( 'datetime_picker_format_month' ) . '" ' .
+        'size="20" maxlength="16" value="' . $f_due_date . '" />' ?>
+        <i class="fa fa-calendar fa-xlg datetimepicker"></i>
+        <button type="submit" class="btn btn-primary  btn-sm"
+                style=" margin: 0 10px 2px 25px; border-radius: 2px; vertical-align: middle;">查询</button>
+    </form>
+</div>
+<?php
+
+
+
+$i = 0;
+foreach($project_bug_list as $k=>$bug_list) { ?>
+    <div id="main<?php echo $i; ?>" style="margin: 30px 30px;width: 1000px;height:600px;"></div>
+    <script src="./js/echarts.min.js"></script>
+    <script src="./js/macarons.js"></script>
+    <script type="text/javascript">
+        var data<?php echo $i; ?> = eval(<?php echo json_encode($bug_list)?>);
+        console.log(data<?php echo $i; ?>);
+        // 基于准备好的dom，初始化echarts实例
+        var myChart = echarts.init(document.getElementById('main<?php echo $i; ?>'), 'macarons');
+        var option = {
+            title: {
+                text: '<?php echo $k; ?>实施进度表',
+                left: 10
+            },
+            legend: {
+                data: ['计划完成时间', '实际完成时间', '超时时间']
+            },
+            grid: {
+                containLabel: true,
+                left: 20
+            },
+            xAxis: {
+                type: 'time',
+            },
+
+            yAxis: {
+                // 设置y轴上的标签会响应和触发鼠标事件
+                triggerEvent:true,
+                data: [
+                    <?php foreach ($bug_list as $bug) {
+                        echo '"', $bug['summary'], '",';
+                    } ?>
+                ],
+                show : true,
+                axisLabel:{
+                    interval:'auto',//横轴信息全部显示
+                    // rotate:35,//30度角倾斜显示
+                    // 截取8个字符
+                    formatter: function(value) {
+                        var res = value;
+                        if(res.length > 8) {
+                            res = res.substring(0, 7) + "..";
+                        }
+                        return res;
+                    },
+                    textStyle: {
+                        fontSize:14,
+                    }
+
+                },
+            },
+            // 加滚动条
+            dataZoom:{
+                realtime:true, //拖动滚动条时是否动态的更新图表数据
+                height:25,//滚动条高度
+                start:40,//滚动条开始位置（共100等份）
+                end:65//结束位置（共100等份）
+            },
+            // dataZoom: [
+            //     {
+            //         type: 'slider',
+            //         show: true,
+            //         // yAxisIndex: 0,
+            //         xAxisIndex: 0,
+            //     }
+            // ],
+            tooltip: {
+                trigger: 'axis',
+                formatter: function (params) {
+                    // 获取当前节点的
+                    var index = params[0]['dataIndex'];
+                    /* 获取x轴值 */
+                    /* 输出问题名 */
+                    if(params[0] == undefined || params[1] == undefined ||
+                        params[2] == undefined || params[3] == undefined )
+                        return ;
+                    var res = params[0].name + "</br>预计工时："
+                        + data<?php echo $i; ?>[index]['evaluate_time']
+                        + "小时</br>实际工时："
+                        + data<?php echo $i; ?>[index]['real_hours']
+                        + "小时<br>";
+                    var date0 = params[0].data;
+                    var date1 = params[1].data;
+                    var date2 = params[2].data;
+                    var date3 = params[3].data;
+                    /* 获取日期 */
+                    date0 = date0.getFullYear() + "-" + (date0.getMonth() + 1) + "-" + date0.getDate() + ' ' + date0.getHours() + ':' + date0.getMinutes();
+                    date1 = date1.getFullYear() + "-" + (date1.getMonth() + 1) + "-" + date1.getDate() + ' ' + date1.getHours() + ':' + date1.getMinutes();
+                    date2 = date2.getFullYear() + "-" + (date2.getMonth() + 1) + "-" + date2.getDate() + ' ' + date2.getHours() + ':' + date2.getMinutes();
+                    date3 = date3.getFullYear() + "-" + (date3.getMonth() + 1) + "-" + date3.getDate() + ' ' + date3.getHours() + ':' + date3.getMinutes();
+                    res += params[0].seriesName + "~" + params[1].seriesName + ":</br>" + date0 + "~" + date1 + "</br>"
+                    res += params[2].seriesName + "~" + params[3].seriesName + ":</br>" + date2 + "~" + date3 + "</br>"
+                    console.log(params[0]);
+                    return res;
+                }
+            },
+
+            series: [
+                {
+                    name: '计划开始时间',
+                    type: 'bar',
+                    // 设置宽度【不设置时自适应】
+                    barMaxWidth:'20px',
+                    stack: 'test1',
+                    itemStyle: {
+                        normal: {
+                            color: 'rgba(0,0,0,0)'
+                        }
+                    },
+                    data: [
+                        // new Date("2015/09/2"),
+                        // new Date("2015/09/15"),
+                        // new Date("2015/09/15"),
+                        // new Date("2015/10/03"),
+                        // new Date("2015/10/04"),
+                        // new Date("2015/10/05"),
+                        // new Date("2015/10/06")
+                        <?php foreach ($bug_list as $bug) {
+                        echo 'new Date("', date('Y/m/d H:i:s', $bug['expected_starttime']) . '"),';
+                    } ?>
+                    ],
+                },
+
+                {
+                    name: '计划完成时间',
+                    barMaxWidth:'20px',
+                    type: 'bar',
+                    stack: 'test1',
+                    data: [
+                        // new Date("2015/09/12"),
+                        // new Date("2015/09/20"),
+                        // new Date("2015/09/25"),
+                        // new Date("2015/10/05"),
+                        // new Date("2015/10/07"),
+                        // new Date("2015/10/09"),
+                        // new Date("2015/10/12")
+                        <?php foreach ($bug_list as $bug) {
+                        echo 'new Date("', date('Y/m/d H:i:s', $bug['expected_endtime']) . '"),';
+                    } ?>
+                    ]
+                },
+                {
+                    name: '实际开始时间',
+                    type: 'bar',
+                    barMaxWidth:'20px',
+                    stack: 'test2',
+                    itemStyle: {
+                        normal: {
+                            color: 'rgba(0,0,0,0)'
+                        }
+                    },
+                    data: [
+                        // new Date("2015/09/2"),
+                        // new Date("2015/09/15"),
+                        // new Date("2015/09/15"),
+                        // new Date("2015/10/03"),
+                        // new Date("2015/10/04"),
+                        // new Date("2015/10/05"),
+                        // new Date("2015/10/06")
+                        <?php foreach ($bug_list as $bug) {
+                        echo 'new Date("', date('Y/m/d H:i:s', $bug['date_submitted']) . '"),';
+                    } ?>
+                    ]
+                },
+                {
+                    name: '实际完成时间',
+                    type: 'bar',
+                    barMaxWidth:'20px',
+                    stack: 'test2',
+                    data: [
+                        <?php foreach ($bug_list as $bug) {
+                        echo 'new Date("', date('Y/m/d H:i:s', $bug['date_submitted'] + 3600 * $bug['real_hours']) . '"),';
+                    } ?>
+                        // new Date("2015/09/6"),
+                        // new Date("2015/09/20"),
+                        // new Date("2015/09/27"),
+                        // new Date("2015/10/11"),
+                        // new Date("2015/10/16"),
+                        // new Date("2015/10/18"),
+                        // new Date("2015/10/17")
+                    ]
+                },
+                {
+                    name: '超时时间',
+                    type: 'bar',
+                    barMaxWidth:'20px',
+                    stack: 'test2',
+                    itemStyle: {
+                        normal: {
+                            color: 'rgba(255,106, 106, 1)'
+                        }
+                    },
+
+                    data: [
+                        /* 超时开始日期【当实际>计划时 计划 反之 实际】 */
+                        // new Date("2015/09/6"),
+                        // new Date("2015/09/20"),
+                        // new Date("2015/09/25"),
+                        // new Date("2015/10/5"),
+                        // new Date("2015/10/7"),
+                        // new Date("2015/10/9"),
+                        // new Date("2015/10/12")
+                        <?php foreach ($bug_list as $bug) {
+                        echo 'new Date("', date('Y/m/d H:i:s', $bug['timeout']) . '"),';
+                    } ?>
+                    ]
+                },
+
+            ]
+        };
+        console.log(option);
+        // 使用刚指定的配置项和数据显示图表。
+        myChart.setOption(option);
+        // 设置点击事件
+        myChart.on('click', function (params) {
+            // 打开对应问题
+            var index = params['dataIndex'];
+            window.open('view.php?id=' + data<?php echo $i; ?>[index]['id']);
+        });
+
+        // 自定义y轴列弹出框
+        extension(myChart);
+
+        function extension(mychart) {
+            //判断是否创建过div框,如果创建过就不再创建了
+            var id = document.getElementById("extension");
+            if(!id) {
+                var div = "<div id = 'extension' sytle='display:none;'></div>"
+                $('html').append(div);
+            }
+
+            // 鼠标在y轴某项
+            mychart.on('mouseover', function(params) {
+                if(params.componentType == "yAxis") {
+                    $('#extension').css({
+                        "position": "absolute",
+                        "color": "white",
+                        //"border":"solid 2px white",
+                        "font-family": "Arial",
+                        "font-size": "14px",
+                        "display": "inline",
+                        "background-color":"rgba(50,50,50,0.5)",
+                        "z-index": "999",
+                        "padding": "10px",
+                        "border-radius": "5px"
+                    }).text(params.value);
+
+                    // 设置坐标
+                    $("html").mousemove(function(event) {
+                        var xx = event.pageX + 40;
+                        var yy = event.pageY - 30;
+                        $('#extension').css('top', yy).css('left', xx);
+                    });
+                }
+            });
+            // 鼠标移开y轴某项
+            mychart.on('mouseout', function(params) {
+                if(params.componentType == "yAxis") {
+                    $('#extension').css('display', 'none');
+                }
+            });
+
+        };
+    </script>
+    <?php
+    $i++;
+}
+?>
+</div>
+<?php
+layout_page_end();
+
+
